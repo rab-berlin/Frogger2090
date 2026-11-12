@@ -1,8 +1,8 @@
 # Frogger2090
 
-Frogger für den Busch Microtronic 2090 mit dem [ESP2090 Studio](https://github.com/rab-berlin/ESP2090) (8x8-LED-Matrix mit Farben) und 3 Tastern: den Frosch über die Straße und den Fluss in eine der vier Buchten bringen.
+Frogger für den Busch Microtronic 2090 mit dem [ESP2090 Studio](https://github.com/rab-berlin/ESP2090) (8x8-LED-Matrix mit Farben) und 4 Tastern: den Frosch über die Straße und den Fluss in eine der vier Buchten bringen.
 
-- 238 Programmschritte, 18 frei
+- 251 Programmschritte, 5 frei
 - Dateien: [frogger.mic](frogger.mic), das kommentierte Listing, und das Userscript [frogger_farben.py](frogger_farben.py) für die Farben
 - Getestet im [Emulator2090](https://github.com/rab-berlin/Emulator2090), noch nicht am Gerät
 
@@ -37,7 +37,7 @@ Frogger für den Busch Microtronic 2090 mit dem [ESP2090 Studio](https://github.
 
 Neues Spiel: RESET, RUN. Am Spielende hinterlässt das Programm saubere Farben. Kam der RESET mitten im Spiel, das Userscript noch einmal starten, sonst bleibt an der letzten Stelle des Froschs ein grünes (oder rotes) Pixel stehen. Ebenso, wenn die Farben im Script geändert wurden oder ein anderes Programm die Farben der Matrix verändert hat.
 
-Die Matrix muss wach sein. Hat ein anderes Programm sie schlafen gelegt, wartet Frogger, bis sie geweckt wird.
+Die Matrix darf beim Start wach sein oder schlafen.
 
 **Ohne Userscript** läuft das Programm auch: Autos, Stämme, Ufer, Hecke und volle Buchten sind dann alle rot, die Standardfarbe der Matrix. Nur den Frosch färbt das Programm selbst grün. So sieht es auch im Emulator2090 aus, der keine Userscripts kennt.
 
@@ -45,27 +45,28 @@ Die Matrix muss wach sein. Hat ein anderes Programm sie schlafen gelegt, wartet 
 
 | Taster | Pfeiltaste im Emulator | Wirkung |
 |---|---|---|
+| Eingang 1 | runter (umbelegen, siehe unten) | zurück |
 | Eingang 2 | hoch | vor |
 | Eingang 3 | links (umbelegen, siehe unten) | links |
 | Eingang 4 | rechts | rechts |
 
-- Ein Takt dauert etwa 1 Sekunde, mit Sprung etwa 1,3 Sekunden. Je Takt springt der Frosch höchstens einmal; vor geht vor links und rechts.
+- Ein Takt dauert etwa 1 Sekunde, mit Sprung etwa 1,3 Sekunden. Je Takt springt der Frosch höchstens einmal; Vorrang hat zurück, dann vor, links, rechts.
 - Die Taster werden mehrmals je Takt abgefragt und gesammelt. Ein Druck sollte etwa eine halbe Sekunde dauern, damit er sicher ankommt. Gehalten springt der Frosch jeden Takt weiter.
-- Am linken und rechten Rand geschieht nichts. Zurück geht es nicht.
-- Eingang 1 ist REQ der Matrix.
-- **Emulator2090:** Taster 3 hängt dort anfangs an Pfeil runter. Umbelegen: `t`, dann dreimal `3` (runter, rechts, leer, links), dann `t`.
+- Am linken und rechten Rand geschieht nichts, ebenso bei zurück in der untersten Reihe.
+- **Eingang 1** ist zugleich die Leitung, auf der die Matrix ihre Bereitschaft (REQ) meldet. Das Programm legt die Matrix deshalb nach jedem Befehl schlafen (siehe unten). Ist zurück gedrückt, wenn ein Befehl an die Matrix ansteht, wartet es, bis der Taster losgelassen ist. Solange zurück gehalten wird, steht das Spiel.
+- **Emulator2090:** Taster 1 und 3 hängen dort anfangs an Pfeil links und Pfeil runter. Umbelegen: `t`, dann `1` `1` (Taster 1: Pfeil runter), `3` `3` `3` (Taster 3: Pfeil links), dann `t`.
 
 ## Farben ändern
 
 - **Im Userscript:** die Farbnamen je Reihe in `farben`, Stamm und Hecke als Farbwerte (r, g, b) in `STAMM` und `HECKE`. Nach einer Änderung das Script noch einmal starten, dann RESET und RUN.
 - **Wie das geht:** `setColors` kennt nur zehn Farbnamen. Das Script legt deshalb mit `setPalette` eigene Werte auf „orange“ (Stamm braun) und „tuerkis“ (Hecke dunkelgrün). Das gilt bis zum Neustart des ESP, auch für andere Programme.
-- **Im Programm:** Frosch an Adresse 02 und 7C, Befehl `142` (Farbe 4, grün); verlorener Frosch an Adresse 71, Befehl `112` (Farbe 1, rot). Die Buchten sind im Userscript grün und sollten zum Frosch passen.
+- **Im Programm:** Frosch an Adresse 02 und 15, Befehl `142` (Farbe 4, grün); verlorener Frosch an Adresse 75, Befehl `112` (Farbe 1, rot). Die Buchten sind im Userscript grün und sollten zum Frosch passen.
 
 ## Einstellen
 
-- **Leben:** Adresse 88, Befehl `950` (`CMPI #5`): das Spiel endet beim 5. verlorenen Frosch.
+- **Leben:** Adresse 89, Befehl `950` (`CMPI #5`): das Spiel endet beim 5. verlorenen Frosch.
 - **Verkehr:** Adresse 07-0B: die Muster der Reihen 2, 3, 4, 6, 7 (`119`, `13A`, `12B`, `13C`, `17D`). Jede Reihe wiederholt sich alle 4 Spalten; der Wert ist das Muster in Spalte 1-4, Bit 1 = Spalte 1. Mehr Bits = mehr Autos bzw. längere Stämme.
-- **Tempo:** Adresse 28, Befehl `152`: Wartezeit je Takt, 6 - Stufe Runden zu 37 ms.
+- **Tempo:** Adresse 2B, Befehl `152`: Wartezeit je Takt, 6 - Stufe Runden zu 37 ms.
 
 ## Wie es gemacht ist
 
@@ -76,6 +77,7 @@ Der 2090 kennt keine indirekte Adressierung: Ein Programm kann nicht „das Regi
 - **Grün ohne Flackern.** Steht der Frosch auf Ufer oder Stamm, ist sein Pixel im Bild ohnehin an. Das Programm färbt es vorher grün, nur in den Farben der Matrix, und das Bild zeigt beides zugleich. Nur auf der Straße ist sein Pixel dunkel; dort zeichnet es ihn gleich nach dem Bild (er flackert dabei ganz kurz).
 - **Farben zurück.** Am Start legt das Programm die Farben des Userscripts auf den Stapel der Matrix. Hat sich der Frosch bewegt, holt es sie vor dem nächsten Bild zurück, damit sein altes Pixel nicht grün bleibt. Steht er still, entfällt das, und der Takt ist kürzer.
 - **Treffer mit einem UND.** Der Frosch steht als Spalte (0-7) und als Bit in seiner Hälfte. Weil beide Hälften einer Reihe gleich sind, ist „Spur UND Bit“ ungleich 0 genau dann, wenn unter ihm ein Auto oder ein Stamm ist.
+- **Vier Taster an vier Eingängen.** Eingang 1 ist eigentlich die REQ-Leitung der Matrix. Die Firmware des ESP2090 kann aber schlafen: Jeder Befehl weckt die Matrix mit einem gehaltenen F an den Ausgängen, sie meldet REQ, nimmt genau diesen einen Befehl und schläft danach von selbst wieder. Zwischen den Befehlen ist Eingang 1 also frei für einen Taster. Vor dem Wecken prüft das Programm, ob Eingang 1 gedrückt ist; dann wartet es, sonst hielte es den Taster für REQ.
 - **Ein Register, zwei Aufgaben.** Der Taktzähler braucht nur ein Bit (gerader oder ungerader Takt). Die unteren Bits merken sich, ob der Frosch sich bewegt hat.
 - **Fair:** Eine Suche über alle Spielzustände zeigt: Aus jeder Lage am Start ist eine freie Bucht erreichbar, in den ersten Stufen in 8-11 Takten, ab Stufe 3 in 10-13.
 
