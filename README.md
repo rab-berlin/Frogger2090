@@ -14,7 +14,7 @@ Frogger für den Busch Microtronic 2090 mit dem [ESP2090 Studio](https://github.
 |---|---|---|
 | 8 | Ziel | Hecke, dazwischen vier Buchten (Spalte 2, 4, 5, 7) |
 | 7 | Fluss | Baumstämme (3 lang), treiben jeden Takt nach rechts |
-| 6 | Fluss | Baumstämme (2 lang), treiben jeden Takt nach links |
+| 6 | Fluss | Baumstämme (2 lang), treiben nach links |
 | 5 | Mittelstreifen | sicher |
 | 4 | Straße | Autos (magenta), fahren nach rechts |
 | 3 | Straße | Lastwagen (weiß, 2 lang), fahren nach links |
@@ -24,9 +24,9 @@ Frogger für den Busch Microtronic 2090 mit dem [ESP2090 Studio](https://github.
 - **Frosch:** grün, startet unten in Spalte 4.
 - **Fluss:** Auf einem Stamm fährt der Frosch mit. Wasser ist dunkel; wer hineinspringt, ist verloren, ebenso wer auf dem Stamm über den Rand getragen wird.
 - **Straße:** Ein Auto auf dem Feld des Froschs ist sein Ende. Der Verkehr stockt zufällig: Jede Fahrspur bleibt in etwa jedem vierten Takt stehen. Fährt ein Auto gerade auf den Frosch zu, entkommt er mit einem Sprung nach vorn oder zurück, aber nicht zur Seite.
-- **Fluss:** Die Stämme treiben gleichmäßig, damit man das Mitfahren planen kann.
+- **Fluss:** Auch die Stämme in Reihe 6 stocken zufällig; der Frosch darauf bleibt dann mit stehen. Wohin er oben springt, ist dadurch nicht ganz sicher, aber er kann jederzeit auf den Mittelstreifen zurück. Reihe 7 treibt gleichmäßig, damit man die Buchten anpeilen kann.
 - **Ziel:** Ein Sprung in eine freie Bucht gibt einen Punkt, die Bucht leuchtet grün. Gegen die Hecke oder in eine volle Bucht ist der Frosch verloren.
-- **Verloren:** Der Frosch leuchtet kurz rot, dann kommt ein neuer von unten.
+- **Verloren:** Der Frosch leuchtet etwa 3 Sekunden rot, dann kommt ein neuer von unten.
 - **Stufen:** Sind alle vier Buchten voll, beginnt die nächste Stufe, ein wenig schneller (bis Stufe 5).
 - **Ende:** Nach 5 verlorenen Fröschen zeigt die Anzeige die Punkte (hexadezimal), und das Programm steht.
 
@@ -61,13 +61,13 @@ Die Matrix darf beim Start wach sein oder schlafen.
 
 - **Im Userscript:** die Farbnamen je Reihe in `farben`, Stamm und Hecke als Farbwerte (r, g, b) in `STAMM` und `HECKE`. Nach einer Änderung das Script noch einmal starten, dann RESET und RUN.
 - **Wie das geht:** `setColors` kennt nur zehn Farbnamen. Das Script legt deshalb mit `setPalette` eigene Werte auf „orange“ (Stamm braun) und „tuerkis“ (Hecke dunkelgrün). Das gilt bis zum Neustart des ESP, auch für andere Programme.
-- **Im Programm:** Frosch an Adresse 02 und 15, Befehl `14F` (Farbe 4, grün); verlorener Frosch an Adresse 6D, Befehl `11F` (Farbe 1, rot). Die Buchten sind im Userscript grün und sollten zum Frosch passen.
+- **Im Programm:** Frosch an Adresse 02 und 15, Befehl `14F` (Farbe 4, grün); verlorener Frosch an Adresse 6E, Befehl `11F` (Farbe 1, rot). Die Buchten sind im Userscript grün und sollten zum Frosch passen.
 
 ## Einstellen
 
 - **Leben:** Adresse 81, Befehl `950` (`CMPI #5`): das Spiel endet beim 5. verlorenen Frosch.
 - **Verkehr:** Adresse 07-0B: die Muster der Reihen 2, 3, 4, 6, 7 (`119`, `13A`, `12B`, `13C`, `170`). Jede Reihe wiederholt sich alle 4 Spalten; der Wert ist das Muster in Spalte 1-4, Bit 1 = Spalte 1. Mehr Bits = mehr Autos bzw. längere Stämme.
-- **Tempo:** Adresse 2B, Befehl `15F`: Wartezeit je Takt, 6 - Stufe Runden zu 37 ms.
+- **Tempo:** Adresse 2A, Befehl `15F`: Wartezeit je Takt, 6 - Stufe Runden zu 37 ms.
 
 ## Wie es gemacht ist
 
@@ -80,7 +80,7 @@ Der 2090 kennt keine indirekte Adressierung: Ein Programm kann nicht „das Regi
 - **Treffer mit einem UND.** Der Frosch steht als Spalte (0-7) und als Bit in seiner Hälfte. Weil beide Hälften einer Reihe gleich sind, ist „Spur UND Bit“ ungleich 0 genau dann, wenn unter ihm ein Auto oder ein Stamm ist.
 - **Vier Taster an vier Eingängen.** Eingang 1 ist eigentlich die REQ-Leitung der Matrix. Die Firmware des ESP2090 kann aber schlafen: Jeder Befehl weckt die Matrix mit einem gehaltenen F an den Ausgängen, sie meldet REQ, nimmt genau diesen einen Befehl und schläft danach von selbst wieder. Zwischen den Befehlen ist Eingang 1 also frei für einen Taster. Vor dem Wecken prüft das Programm, ob Eingang 1 gedrückt ist; dann wartet es, sonst hielte es den Taster für REQ.
 - **Zufall fast umsonst.** `RND` schreibt immer in RD, RE und RF. Dort liegen nur Hilfsregister, deshalb kostet die Zufallszahl einen Befehl je Takt. E UND F setzt jedes Bit mit etwa 1/4; je Fahrspur entscheidet ein Bit, ob sie stehen bleibt. Die Ziffer D taugt dafür nicht: Der Zähler hinter `RND` läuft je Befehl um 3 weiter, ein Takt hat fast immer gleich viele Befehle, und D wiederholte sich alle 8 Takte.
-- **Zufall nur, wo er fair ist.** Würden die Stämme zufällig treiben, wüsste man nicht, in welcher Spalte der Frosch oben ankommt. Ein simulierter vorsichtiger Spieler erreichte dann keine Bucht mehr. Auf der Straße dagegen schafft er etwa 70 Buchten je verlorenem Frosch.
+- **Zufall nur, wo er fair ist.** Ein simulierter Spieler, der zwei Takte vorausrechnet, prüft jede Regel. Gegen die Wand lief zum Beispiel eine ältere Regel: Ein Auto, das auf den Frosch zufährt, trifft ihn vor seinem Sprung. Mit Zufall war das eine Falle; jetzt gilt sie nur noch für Sprünge zur Seite (damit er nicht durch ein entgegenkommendes Auto springt). Mit Zufall auf Straße und Reihe 6 schafft der vorsichtige Spieler etwa 20 Buchten je verlorenem Frosch. Reihe 7 bleibt gleichmäßig, sonst wäre der Sprung in die Bucht Glückssache.
 
 ## Geschichte
 
