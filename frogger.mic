@@ -1,4 +1,8 @@
 ; frogger - Frogger fuer Busch Microtronic 2090 mit dem ESP2090 Studio (8x8-LED-Matrix) und 4 Tastern
+; Version 08: 15 feinere Stufen bis ganz ohne Stockung: In einem Takt darf nur etwas stocken, wenn die
+;   Zaehlerziffer D kleiner als LV ist; dann entscheidet je Fahrspur ein Bit von E. Je Spur also etwa LV/32:
+;   Stufe 1 (LV = E) 44 %, Stufe 7 25 %, Stufe 11 12 %, Stufe 14 3 %, ab Stufe 15 nichts mehr, auch auf dem
+;   Fluss nicht. LV sinkt je Stufe um 1.
 ; Version 07: Gleiches Tempo in allen Stufen. Die Stufen werden ueber die Stockungen schwerer: In Stufe 1
 ;   bleiben Autos und Lastwagen je Reihe in etwa jedem zweiten Takt stehen, mit jeder Stufe eine Reihe
 ;   weniger oft (Reihe 4, Reihe 2, Lastwagen), ab Stufe 4 alle in etwa jedem vierten Takt wie bisher.
@@ -36,10 +40,10 @@
 ; Spielfeld (Reihe 1 unten): 1 Start (violett), 2-4 Strasse (Autos gelb, weiss, magenta), 5 Mittelstreifen
 ;   (violett), 6-7 Fluss (Staemme braun), 8 Ziel: Hecke in Spalte 1, 3, 6, 8, Buchten in Spalte 2, 4, 5, 7.
 ;   Frosch gruen. Reihe 2 und 4 fahren nach rechts, Reihe 3 nach links;
-;   Reihe 7 treibt jeden Takt nach rechts, Reihe 6 nach links. Zufall: Reihe 2, 3, 4 und 6 bleiben je mit
-;   eigenem Bit von E UND (F ODER LV) stehen: etwa 1/2, wenn das Bit in LV gesetzt ist, sonst 1/4. LV ist
-;   in Stufe 1 = 7, dann 3, 1, 0 (Bit 1 Lastwagen, 2 Reihe 2, 4 Reihe 4, 8 Reihe 6). Auf einem Stamm
-;   faehrt der Frosch mit; wird er dabei ueber den Rand getragen, ist er verloren.
+;   Reihe 7 treibt jeden Takt nach rechts, Reihe 6 nach links. Zufall: Ist D kleiner als LV, bleiben
+;   Reihe 2, 3, 4 und 6 je mit eigenem Bit von E stehen (Bit 1 Lastwagen, 2 Reihe 2, 4 Reihe 4, 8 Reihe 6).
+;   LV ist in Stufe 1 = E und sinkt je Stufe um 1 bis 0. Auf einem Stamm faehrt der Frosch mit; wird er
+;   dabei ueber den Rand getragen, ist er verloren.
 ; Regeln: Auto trifft Frosch, Frosch im Wasser, ueber den Rand getragen, gegen eine Mauer oder in eine
 ;   volle Bucht = Frosch verloren (rot, etwa 3 s Pause, neuer Frosch unten). Freie Bucht = Punkt, die Bucht
 ;   bleibt gruen. Nach 5 verlorenen Froeschen zeigt die Anzeige die Punkte (hex) und das Spiel steht.
@@ -56,260 +60,261 @@
 ;   Eine Bucht ist dort schon gruen: Ein Frosch darin setzt nur ihr Bit (GL/GR).
 ;
 ; Register: Q REQ/ACK und Hilfe, FUNC ACK-Nummer (im Test V = Spur), X erstes Nibble und Hilfe,
-;   FX/FY/FM Frosch, KEYS gesammelte Eingaenge, CNT Merker 'Frosch bewegt', LV Stufe (7, 3, 1, 0),
+;   FX/FY/FM Frosch, KEYS gesammelte Eingaenge, CNT Merker 'Frosch bewegt', LV Schwelle (E bis 0),
 ;   L1-L3 Strasse (Reihe 2-4), L5/L6 Fluss (Reihe 6-7), GL/GR Zielreihe. M0 verlorene Froesche, M1/M2 Punkte (nach RESET 0).
 F02 ; 00             DISOUT               Anzeige aus: 9,3 ms je Befehl (Takt der Matrix)
 1EE ; 01             MOVI   #E,FUNC
 14F ; 02             MOVI   #4,X
-BD2 ; 03             CALL   cmd           ACK 14,4 (gruen): erster Befehl, danach schlaeft die Matrix sicher; ist sie
+BD3 ; 03             CALL   cmd           ACK 14,4 (gruen): erster Befehl, danach schlaeft die Matrix sicher; ist sie
 1DE ; 04             MOVI   #D,FUNC       beim Start wach, kann ein Druck auf Eingang 1 ihn verschlucken - harmlos
 11F ; 05             MOVI   #1,X
-BD2 ; 06             CALL   cmd           ACK 13,1: Farbmatrix des Userscripts auf den Stapel
-1F8 ; 07             MOVI   #F,LV         Stufe: wird je Stufe halbiert (Stufe 1: 7)
+BD3 ; 06             CALL   cmd           ACK 13,1: Farbmatrix des Userscripts auf den Stapel
+1F8 ; 07             MOVI   #F,LV         Schwelle fuer Stockungen: je Stufe 1 weniger (Stufe 1: E)
 119 ; 08             MOVI   #1,L1         Reihe 2: ein Auto je 4 Spalten
 13A ; 09             MOVI   #3,L2         Reihe 3: Lastwagen (2 lang)
 12B ; 0A             MOVI   #2,L3         Reihe 4: ein Auto
 13C ; 0B             MOVI   #3,L5         Reihe 6: Stamm 2 lang
 170 ; 0C             MOVI   #7,L6         Reihe 7: Stamm 3 lang
-F98 ; 0D lvup:       SHR    LV            naechste Stufe: eine Fahrspur weniger mit vielen Stockungen
-151 ; 0E             MOVI   #5,GL         Ziel: Mauern in Spalte 1, 3 ...
-1A2 ; 0F             MOVI   #A,GR         ... und 6, 8; Buchten 2, 4, 5, 7
-104 ; 10 frog:       MOVI   #0,FY         neuer Frosch: Reihe 1, Spalte 4
-133 ; 11             MOVI   #3,FX
-185 ; 12             MOVI   #8,FM
-1EE ; 13             MOVI   #E,FUNC
-14F ; 14             MOVI   #4,X
-BD2 ; 15             CALL   cmd           ACK 14,4: aktive Farbe gruen (je Frosch: auch nach einem verlorenen Befehl)
-106 ; 16             MOVI   #0,KEYS       alte Tastendruecke verwerfen
-517 ; 17             ADDI   #1,CNT        Merker: Frosch bewegt
-907 ; 18 show:       CMPI   #0,CNT
-E21 ; 19             BRZ    still         Frosch steht still: Farbmatrix sauber bis auf sein gruenes Pixel
-107 ; 1A             MOVI   #0,CNT        Merker loeschen
-1DE ; 1B             MOVI   #D,FUNC
-19F ; 1C             MOVI   #9,X
-BD2 ; 1D             CALL   cmd           ACK 13,9: Farbmatrix vom Stapel (peek), Anzeige bleibt
-BCC ; 1E             CALL   rt
-D27 ; 1F             BRC    sh1
-C23 ; 20             GOTO   shr
-BCC ; 21 still:      CALL   rt
-D28 ; 22             BRC    sh2
-BE1 ; 23 shr:        CALL   frame         Strasse: erst das Bild ...
-58F ; 24             ADDI   #8,X
-BD2 ; 25             CALL   cmd           ... dann der Frosch in Zeichenart 1 (gruen und an)
-C29 ; 26             GOTO   wait
-BD2 ; 27 sh1:        CALL   cmd           sonst Frosch gruen faerben (Zeichenart 0, das Pixel ist im Bild an) ...
-BE1 ; 28 sh2:        CALL   frame         ... und das Bild: erst jetzt neue Anzeige
-14F ; 29 wait:       MOVI   #4,X          Wartezeit: 5 Runden zu 4 Befehlen (in allen Stufen gleich)
-FDD ; 2A w1:         DIN    Q             Taster sammeln
+718 ; 0D lvup:       SUBI   #1,LV         naechste Stufe: seltener Stockungen ...
+FB8 ; 0E             ADC    LV            ... bis 0 (dann keine mehr)
+151 ; 0F             MOVI   #5,GL         Ziel: Mauern in Spalte 1, 3 ...
+1A2 ; 10             MOVI   #A,GR         ... und 6, 8; Buchten 2, 4, 5, 7
+104 ; 11 frog:       MOVI   #0,FY         neuer Frosch: Reihe 1, Spalte 4
+133 ; 12             MOVI   #3,FX
+185 ; 13             MOVI   #8,FM
+1EE ; 14             MOVI   #E,FUNC
+14F ; 15             MOVI   #4,X
+BD3 ; 16             CALL   cmd           ACK 14,4: aktive Farbe gruen (je Frosch: auch nach einem verlorenen Befehl)
+106 ; 17             MOVI   #0,KEYS       alte Tastendruecke verwerfen
+517 ; 18             ADDI   #1,CNT        Merker: Frosch bewegt
+907 ; 19 show:       CMPI   #0,CNT
+E22 ; 1A             BRZ    still         Frosch steht still: Farbmatrix sauber bis auf sein gruenes Pixel
+107 ; 1B             MOVI   #0,CNT        Merker loeschen
+1DE ; 1C             MOVI   #D,FUNC
+19F ; 1D             MOVI   #9,X
+BD3 ; 1E             CALL   cmd           ACK 13,9: Farbmatrix vom Stapel (peek), Anzeige bleibt
+BCD ; 1F             CALL   rt
+D28 ; 20             BRC    sh1
+C24 ; 21             GOTO   shr
+BCD ; 22 still:      CALL   rt
+D29 ; 23             BRC    sh2
+BE2 ; 24 shr:        CALL   frame         Strasse: erst das Bild ...
+58F ; 25             ADDI   #8,X
+BD3 ; 26             CALL   cmd           ... dann der Frosch in Zeichenart 1 (gruen und an)
+C2A ; 27             GOTO   wait
+BD3 ; 28 sh1:        CALL   cmd           sonst Frosch gruen faerben (Zeichenart 0, das Pixel ist im Bild an) ...
+BE2 ; 29 sh2:        CALL   frame         ... und das Bild: erst jetzt neue Anzeige
+FDD ; 2A wait,w1:    DIN    Q             Taster sammeln
 AD6 ; 2B             OR     Q,KEYS
-5FF ; 2C             ADDI   #F,X
+5FE ; 2C             ADDI   #F,FUNC
 D2A ; 2D             BRC    w1
 F05 ; 2E loop:       RND                  Q, FUNC, X = Zaehlerziffern D, E, F
-A8F ; 2F rnd:        OR     LV,X
-2FE ; 30             AND    X,FUNC        FUNC = E UND (F ODER LV): Bit in LV gesetzt 1/2, sonst 1/4
-F9E ; 31             SHR    FUNC          (der Zaehler laeuft je Takt um etwa 120 hex weiter: D taugt nicht)
-D35 ; 32             BRC    t1            Bit 1: Lastwagen bleiben stehen
-F9A ; 33             SHR    L2            Reihe 3 nach links
-D9B ; 34             BRC    f2
-F9E ; 35 t1:         SHR    FUNC
-D39 ; 36             BRC    s1            Bit 2: Reihe 2 bleibt stehen
-FA9 ; 37             SHL    L1
-FB9 ; 38             ADC    L1            Reihe 2 nach rechts
-F9E ; 39 s1:         SHR    FUNC
-D3D ; 3A             BRC    s3            Bit 4: Reihe 4 bleibt stehen
-FAB ; 3B             SHL    L3
-FBB ; 3C             ADC    L3            Reihe 4 nach rechts
-FA0 ; 3D s3:         SHL    L6
-FB0 ; 3E             ADC    L6            Reihe 7 nach rechts (ohne Zufall)
-964 ; 3F             CMPI   #6,FY
-E95 ; 40             BRZ    c6            Frosch auf Reihe 7: faehrt mit
-F9E ; 41 r6:         SHR    FUNC
-D47 ; 42             BRC    keys          Bit 8: Staemme in Reihe 6 bleiben stehen (der Frosch darauf auch)
-F9C ; 43             SHR    L5            Reihe 6 nach links
-D9D ; 44             BRC    f5
-954 ; 45 r5:         CMPI   #5,FY
-E98 ; 46             BRZ    c5            Frosch auf Reihe 6: faehrt mit
-F96 ; 47 keys:       SHR    KEYS          Eingang 1: zurueck
-D9F ; 48             BRC    back
-F96 ; 49             SHR    KEYS
-DA3 ; 4A             BRC    up            Eingang 2: vor
-F96 ; 4B             SHR    KEYS
-DA6 ; 4C             BRC    left          Eingang 3: links
-F96 ; 4D             SHR    KEYS
-DA9 ; 4E             BRC    right         Eingang 4: rechts
-106 ; 4F chk:        MOVI   #0,KEYS
-04F ; 50             MOV    FY,X
-E18 ; 51             BRZ    show          Reihe 1: Start, sicher
-09E ; 52             MOV    L1,V
-71F ; 53             SUBI   #1,X
-E86 ; 54             BRZ    road
-0AE ; 55             MOV    L2,V
-71F ; 56             SUBI   #1,X
-E86 ; 57             BRZ    road
-0BE ; 58             MOV    L3,V
-71F ; 59             SUBI   #1,X
-E86 ; 5A             BRZ    road
-71F ; 5B             SUBI   #1,X
-E18 ; 5C             BRZ    show          Reihe 5: Mittelstreifen, sicher
-0CE ; 5D             MOV    L5,V
-71F ; 5E             SUBI   #1,X
-E89 ; 5F             BRZ    river
-00E ; 60             MOV    L6,V
-71F ; 61             SUBI   #1,X
-E89 ; 62             BRZ    river
-933 ; 63 goal:       CMPI   #3,FX         Reihe 8: Ziel
-D68 ; 64             BRC    g1
-01E ; 65             MOV    GL,V
-A51 ; 66             OR     FM,GL         Bucht fuellen (aendert nichts, wenn dort Mauer oder Frosch ist)
-C6A ; 67             GOTO   g2
-02E ; 68 g1:         MOV    GR,V
-A52 ; 69             OR     FM,GR
-25E ; 6A g2:         AND    FM,V          vorher frei?
-E8C ; 6B             BRZ    home
-1EE ; 6C dead:       MOVI   #E,FUNC
-11F ; 6D             MOVI   #1,X
-BD2 ; 6E             CALL   cmd           Farbe rot
-1DE ; 6F             MOVI   #D,FUNC
-19F ; 70             MOVI   #9,X
-BD2 ; 71             CALL   cmd           Farbmatrix vom Stapel
-BE1 ; 72             CALL   frame         Bild mit dem Stand, der den Frosch getroffen hat
-14E ; 73             MOVI   #4,FUNC
-03F ; 74             MOV    FX,X
-58F ; 75             ADDI   #8,X
-BD2 ; 76             CALL   cmd           Frosch rot (Zeichenart 1)
-1DE ; 77             MOVI   #D,FUNC
-19F ; 78             MOVI   #9,X
-BD2 ; 79             CALL   cmd           Farbmatrix vom Stapel: sauber, die Anzeige zeigt weiter den roten Frosch
-5FE ; 7A p:          ADDI   #F,FUNC
-D7A ; 7B             BRC    p
-5FF ; 7C             ADDI   #F,X
-D7A ; 7D             BRC    p
-F0D ; 7E             EXRL
-510 ; 7F             ADDI   #1,r0         M0: verlorene Froesche
-950 ; 80             CMPI   #5,r0
-E84 ; 81             BRZ    over
-F0D ; 82             EXRL
-C10 ; 83             GOTO   frog
-F21 ; 84 over:       DISP   2,r1          Spielende: Punkte M2 M1 hexadezimal
-C85 ; 85 end:        GOTO   end
-25E ; 86 road:       AND    FM,V          Strasse: Auto unter dem Frosch?
-E18 ; 87             BRZ    show
-C6C ; 88             GOTO   dead
-25E ; 89 river:      AND    FM,V          Fluss: Stamm unter dem Frosch?
-E6C ; 8A             BRZ    dead
-C18 ; 8B             GOTO   show
-F0D ; 8C home:       EXRL                 die Bucht ist in der Farbmatrix schon gruen
-511 ; 8D             ADDI   #1,r1         Punkte M1, M2
-FB2 ; 8E             ADC    r2
-F0D ; 8F             EXRL
-01F ; 90             MOV    GL,X
-22F ; 91             AND    GR,X
-51F ; 92             ADDI   #1,X          Uebertrag: alle Buchten voll
-D0D ; 93             BRC    lvup
-C10 ; 94             GOTO   frog
-BBA ; 95 c6:         CALL   movr
-D6C ; 96             BRC    dead          ueber den rechten Rand getragen
-C41 ; 97             GOTO   r6
-BC1 ; 98 c5:         CALL   movl
-D6C ; 99             BRC    dead          ueber den linken Rand getragen
-C47 ; 9A             GOTO   keys
-58A ; 9B f2:         ADDI   #8,L2         Bit 1 nach Bit 4
-C35 ; 9C             GOTO   t1
-58C ; 9D f5:         ADDI   #8,L5
-C45 ; 9E             GOTO   r5
-714 ; 9F back:       SUBI   #1,FY         eine Reihe zurueck, in Reihe 1 bleibt er
-FB4 ; A0             ADC    FY
-517 ; A1             ADDI   #1,CNT        Merker
-C4F ; A2             GOTO   chk
-514 ; A3 up:         ADDI   #1,FY
-517 ; A4             ADDI   #1,CNT        Merker
-C4F ; A5             GOTO   chk
-BAC ; A6 left:       CALL   prel          gegen die Fahrt (Reihe 2, 4): erst pruefen, ob ein Auto auf ihn gefahren ist
-BC1 ; A7             CALL   movl
-C4F ; A8             GOTO   chk
-BB3 ; A9 right:      CALL   prer          gegen die Fahrt (Reihe 3)
-BBA ; AA             CALL   movr
-C4F ; AB             GOTO   chk
-09E ; AC prel:       MOV    L1,V          links: Reihe 2 und 4 fahren nach rechts
-914 ; AD             CMPI   #1,FY
-EB7 ; AE             BRZ    pc
-0BE ; AF             MOV    L3,V
-934 ; B0             CMPI   #3,FY
-EB7 ; B1             BRZ    pc
-F07 ; B2             RET
-0AE ; B3 prer:       MOV    L2,V          rechts: Reihe 3 faehrt nach links
-924 ; B4             CMPI   #2,FY
-EB7 ; B5             BRZ    pc
-F07 ; B6 pr:         RET
-25E ; B7 pc:         AND    FM,V
-EB6 ; B8             BRZ    pr
-C6C ; B9             GOTO   dead
-973 ; BA movr:       CMPI   #7,FX
-ECA ; BB             BRZ    blk
-513 ; BC             ADDI   #1,FX
-517 ; BD             ADDI   #1,CNT        Merker: Frosch bewegt
-FA5 ; BE             SHL    FM
-FB5 ; BF             ADC    FM            8 -> 1: in die rechte Haelfte; Carry 0
-F07 ; C0             RET
-903 ; C1 movl:       CMPI   #0,FX
-ECA ; C2             BRZ    blk
-713 ; C3             SUBI   #1,FX
-517 ; C4             ADDI   #1,CNT        Merker: Frosch bewegt
-F95 ; C5             SHR    FM
-DC8 ; C6             BRC    ml
-F07 ; C7             RET
-585 ; C8 ml:         ADDI   #8,FM         1 -> 8: in die linke Haelfte; Carry 0
-F07 ; C9             RET
-F09 ; CA blk:        STC
-F07 ; CB             RET
-14E ; CC rt:         MOVI   #4,FUNC
-04F ; CD             MOV    FY,X
-71F ; CE             SUBI   #1,X
-92F ; CF             CMPI   #2,X
-03F ; D0             MOV    FX,X
-F07 ; D1             RET
-FDD ; D2 cmd:        DIN    Q             Taster sammeln; die Matrix schlaeft: Eingang 1 ist der Taster
-AD6 ; D3             OR     Q,KEYS
-F9D ; D4             SHR    Q
-DD2 ; D5             BRC    cmd           Eingang 1 gedrueckt: erst loslassen, sonst saehe er wie REQ aus
-1FD ; D6             MOVI   #F,Q
-FED ; D7             DOT    Q             Matrix wecken: F halten, bis REQ kommt
-FDD ; D8 cw:         DIN    Q             warten auf REQ
-31D ; D9             ANDI   #1,Q
-ED8 ; DA             BRZ    cw
-FEE ; DB             DOT    FUNC          ACK
-FEF ; DC             DOT    X
-FE4 ; DD             DOT    FY
-10D ; DE             MOVI   #0,Q
-FED ; DF             DOT    Q             Ausgaenge auf 0
-F07 ; E0             RET
-FDD ; E1 frame:      DIN    Q             Taster sammeln, Eingang 1 wie in cmd
-AD6 ; E2             OR     Q,KEYS
-F9D ; E3             SHR    Q
-DE1 ; E4             BRC    frame
-1FD ; E5             MOVI   #F,Q
-FED ; E6             DOT    Q             Matrix wecken: F halten, bis REQ kommt
-FDD ; E7 fw:         DIN    Q             warten auf REQ
-31D ; E8             ANDI   #1,Q
-EE7 ; E9             BRZ    fw
-FED ; EA             DOT    Q             ACK 1 direkt aus dem F: ein Befehl, danach schlaeft die Matrix
-1FD ; EB             MOVI   #F,Q          genau ein Befehl Abstand
-FED ; EC             DOT    Q             Reihe 1: Start
-FED ; ED             DOT    Q
-FE9 ; EE             DOT    L1            Reihe 2-4: Strasse
-FE9 ; EF             DOT    L1
-FEA ; F0             DOT    L2
+8D8 ; 2F rnd:        CMP    Q,LV          Stockungen nur, wenn D kleiner als LV (Wahrscheinlichkeit LV/16) ...
+D32 ; 30             BRC    rn1
+10E ; 31             MOVI   #0,FUNC       ... sonst faehrt alles
+F9E ; 32 rn1:        SHR    FUNC          je Fahrspur ein Bit von E (1/2): zusammen etwa LV/32
+D36 ; 33             BRC    t1            Bit 1: Lastwagen bleiben stehen
+F9A ; 34             SHR    L2            Reihe 3 nach links
+D9C ; 35             BRC    f2
+F9E ; 36 t1:         SHR    FUNC
+D3A ; 37             BRC    s1            Bit 2: Reihe 2 bleibt stehen
+FA9 ; 38             SHL    L1
+FB9 ; 39             ADC    L1            Reihe 2 nach rechts
+F9E ; 3A s1:         SHR    FUNC
+D3E ; 3B             BRC    s3            Bit 4: Reihe 4 bleibt stehen
+FAB ; 3C             SHL    L3
+FBB ; 3D             ADC    L3            Reihe 4 nach rechts
+FA0 ; 3E s3:         SHL    L6
+FB0 ; 3F             ADC    L6            Reihe 7 nach rechts (ohne Zufall)
+964 ; 40             CMPI   #6,FY
+E96 ; 41             BRZ    c6            Frosch auf Reihe 7: faehrt mit
+F9E ; 42 r6:         SHR    FUNC
+D48 ; 43             BRC    keys          Bit 8: Staemme in Reihe 6 bleiben stehen (der Frosch darauf auch)
+F9C ; 44             SHR    L5            Reihe 6 nach links
+D9E ; 45             BRC    f5
+954 ; 46 r5:         CMPI   #5,FY
+E99 ; 47             BRZ    c5            Frosch auf Reihe 6: faehrt mit
+F96 ; 48 keys:       SHR    KEYS          Eingang 1: zurueck
+DA0 ; 49             BRC    back
+F96 ; 4A             SHR    KEYS
+DA4 ; 4B             BRC    up            Eingang 2: vor
+F96 ; 4C             SHR    KEYS
+DA7 ; 4D             BRC    left          Eingang 3: links
+F96 ; 4E             SHR    KEYS
+DAA ; 4F             BRC    right         Eingang 4: rechts
+106 ; 50 chk:        MOVI   #0,KEYS
+04F ; 51             MOV    FY,X
+E19 ; 52             BRZ    show          Reihe 1: Start, sicher
+09E ; 53             MOV    L1,V
+71F ; 54             SUBI   #1,X
+E87 ; 55             BRZ    road
+0AE ; 56             MOV    L2,V
+71F ; 57             SUBI   #1,X
+E87 ; 58             BRZ    road
+0BE ; 59             MOV    L3,V
+71F ; 5A             SUBI   #1,X
+E87 ; 5B             BRZ    road
+71F ; 5C             SUBI   #1,X
+E19 ; 5D             BRZ    show          Reihe 5: Mittelstreifen, sicher
+0CE ; 5E             MOV    L5,V
+71F ; 5F             SUBI   #1,X
+E8A ; 60             BRZ    river
+00E ; 61             MOV    L6,V
+71F ; 62             SUBI   #1,X
+E8A ; 63             BRZ    river
+933 ; 64 goal:       CMPI   #3,FX         Reihe 8: Ziel
+D69 ; 65             BRC    g1
+01E ; 66             MOV    GL,V
+A51 ; 67             OR     FM,GL         Bucht fuellen (aendert nichts, wenn dort Mauer oder Frosch ist)
+C6B ; 68             GOTO   g2
+02E ; 69 g1:         MOV    GR,V
+A52 ; 6A             OR     FM,GR
+25E ; 6B g2:         AND    FM,V          vorher frei?
+E8D ; 6C             BRZ    home
+1EE ; 6D dead:       MOVI   #E,FUNC
+11F ; 6E             MOVI   #1,X
+BD3 ; 6F             CALL   cmd           Farbe rot
+1DE ; 70             MOVI   #D,FUNC
+19F ; 71             MOVI   #9,X
+BD3 ; 72             CALL   cmd           Farbmatrix vom Stapel
+BE2 ; 73             CALL   frame         Bild mit dem Stand, der den Frosch getroffen hat
+14E ; 74             MOVI   #4,FUNC
+03F ; 75             MOV    FX,X
+58F ; 76             ADDI   #8,X
+BD3 ; 77             CALL   cmd           Frosch rot (Zeichenart 1)
+1DE ; 78             MOVI   #D,FUNC
+19F ; 79             MOVI   #9,X
+BD3 ; 7A             CALL   cmd           Farbmatrix vom Stapel: sauber, die Anzeige zeigt weiter den roten Frosch
+5FE ; 7B p:          ADDI   #F,FUNC
+D7B ; 7C             BRC    p
+5FF ; 7D             ADDI   #F,X
+D7B ; 7E             BRC    p
+F0D ; 7F             EXRL
+510 ; 80             ADDI   #1,r0         M0: verlorene Froesche
+950 ; 81             CMPI   #5,r0
+E85 ; 82             BRZ    over
+F0D ; 83             EXRL
+C11 ; 84             GOTO   frog
+F21 ; 85 over:       DISP   2,r1          Spielende: Punkte M2 M1 hexadezimal
+C86 ; 86 end:        GOTO   end
+25E ; 87 road:       AND    FM,V          Strasse: Auto unter dem Frosch?
+E19 ; 88             BRZ    show
+C6D ; 89             GOTO   dead
+25E ; 8A river:      AND    FM,V          Fluss: Stamm unter dem Frosch?
+E6D ; 8B             BRZ    dead
+C19 ; 8C             GOTO   show
+F0D ; 8D home:       EXRL                 die Bucht ist in der Farbmatrix schon gruen
+511 ; 8E             ADDI   #1,r1         Punkte M1, M2
+FB2 ; 8F             ADC    r2
+F0D ; 90             EXRL
+01F ; 91             MOV    GL,X
+22F ; 92             AND    GR,X
+51F ; 93             ADDI   #1,X          Uebertrag: alle Buchten voll
+D0D ; 94             BRC    lvup
+C11 ; 95             GOTO   frog
+BBB ; 96 c6:         CALL   movr
+D6D ; 97             BRC    dead          ueber den rechten Rand getragen
+C42 ; 98             GOTO   r6
+BC2 ; 99 c5:         CALL   movl
+D6D ; 9A             BRC    dead          ueber den linken Rand getragen
+C48 ; 9B             GOTO   keys
+58A ; 9C f2:         ADDI   #8,L2         Bit 1 nach Bit 4
+C36 ; 9D             GOTO   t1
+58C ; 9E f5:         ADDI   #8,L5
+C46 ; 9F             GOTO   r5
+714 ; A0 back:       SUBI   #1,FY         eine Reihe zurueck, in Reihe 1 bleibt er
+FB4 ; A1             ADC    FY
+517 ; A2             ADDI   #1,CNT        Merker
+C50 ; A3             GOTO   chk
+514 ; A4 up:         ADDI   #1,FY
+517 ; A5             ADDI   #1,CNT        Merker
+C50 ; A6             GOTO   chk
+BAD ; A7 left:       CALL   prel          gegen die Fahrt (Reihe 2, 4): erst pruefen, ob ein Auto auf ihn gefahren ist
+BC2 ; A8             CALL   movl
+C50 ; A9             GOTO   chk
+BB4 ; AA right:      CALL   prer          gegen die Fahrt (Reihe 3)
+BBB ; AB             CALL   movr
+C50 ; AC             GOTO   chk
+09E ; AD prel:       MOV    L1,V          links: Reihe 2 und 4 fahren nach rechts
+914 ; AE             CMPI   #1,FY
+EB8 ; AF             BRZ    pc
+0BE ; B0             MOV    L3,V
+934 ; B1             CMPI   #3,FY
+EB8 ; B2             BRZ    pc
+F07 ; B3             RET
+0AE ; B4 prer:       MOV    L2,V          rechts: Reihe 3 faehrt nach links
+924 ; B5             CMPI   #2,FY
+EB8 ; B6             BRZ    pc
+F07 ; B7 pr:         RET
+25E ; B8 pc:         AND    FM,V
+EB7 ; B9             BRZ    pr
+C6D ; BA             GOTO   dead
+973 ; BB movr:       CMPI   #7,FX
+ECB ; BC             BRZ    blk
+513 ; BD             ADDI   #1,FX
+517 ; BE             ADDI   #1,CNT        Merker: Frosch bewegt
+FA5 ; BF             SHL    FM
+FB5 ; C0             ADC    FM            8 -> 1: in die rechte Haelfte; Carry 0
+F07 ; C1             RET
+903 ; C2 movl:       CMPI   #0,FX
+ECB ; C3             BRZ    blk
+713 ; C4             SUBI   #1,FX
+517 ; C5             ADDI   #1,CNT        Merker: Frosch bewegt
+F95 ; C6             SHR    FM
+DC9 ; C7             BRC    ml
+F07 ; C8             RET
+585 ; C9 ml:         ADDI   #8,FM         1 -> 8: in die linke Haelfte; Carry 0
+F07 ; CA             RET
+F09 ; CB blk:        STC
+F07 ; CC             RET
+14E ; CD rt:         MOVI   #4,FUNC
+04F ; CE             MOV    FY,X
+71F ; CF             SUBI   #1,X
+92F ; D0             CMPI   #2,X
+03F ; D1             MOV    FX,X
+F07 ; D2             RET
+FDD ; D3 cmd:        DIN    Q             Taster sammeln; die Matrix schlaeft: Eingang 1 ist der Taster
+AD6 ; D4             OR     Q,KEYS
+F9D ; D5             SHR    Q
+DD3 ; D6             BRC    cmd           Eingang 1 gedrueckt: erst loslassen, sonst saehe er wie REQ aus
+1FD ; D7             MOVI   #F,Q
+FED ; D8             DOT    Q             Matrix wecken: F halten, bis REQ kommt
+FDD ; D9 cw:         DIN    Q             warten auf REQ
+31D ; DA             ANDI   #1,Q
+ED9 ; DB             BRZ    cw
+FEE ; DC             DOT    FUNC          ACK
+FEF ; DD             DOT    X
+FE4 ; DE             DOT    FY
+10D ; DF             MOVI   #0,Q
+FED ; E0             DOT    Q             Ausgaenge auf 0
+F07 ; E1             RET
+FDD ; E2 frame:      DIN    Q             Taster sammeln, Eingang 1 wie in cmd
+AD6 ; E3             OR     Q,KEYS
+F9D ; E4             SHR    Q
+DE2 ; E5             BRC    frame
+1FD ; E6             MOVI   #F,Q
+FED ; E7             DOT    Q             Matrix wecken: F halten, bis REQ kommt
+FDD ; E8 fw:         DIN    Q             warten auf REQ
+31D ; E9             ANDI   #1,Q
+EE8 ; EA             BRZ    fw
+FED ; EB             DOT    Q             ACK 1 direkt aus dem F: ein Befehl, danach schlaeft die Matrix
+1FD ; EC             MOVI   #F,Q          genau ein Befehl Abstand
+FED ; ED             DOT    Q             Reihe 1: Start
+FED ; EE             DOT    Q
+FE9 ; EF             DOT    L1            Reihe 2-4: Strasse
+FE9 ; F0             DOT    L1
 FEA ; F1             DOT    L2
-FEB ; F2             DOT    L3
+FEA ; F2             DOT    L2
 FEB ; F3             DOT    L3
-FED ; F4             DOT    Q             Reihe 5: Mittelstreifen
-FED ; F5             DOT    Q
-FEC ; F6             DOT    L5            Reihe 6-7: Fluss
-FEC ; F7             DOT    L5
-FE0 ; F8             DOT    L6
+FEB ; F4             DOT    L3
+FED ; F5             DOT    Q             Reihe 5: Mittelstreifen
+FED ; F6             DOT    Q
+FEC ; F7             DOT    L5            Reihe 6-7: Fluss
+FEC ; F8             DOT    L5
 FE0 ; F9             DOT    L6
-FE1 ; FA             DOT    GL            Reihe 8: Ziel
-FE2 ; FB             DOT    GR
-10D ; FC             MOVI   #0,Q
-FED ; FD             DOT    Q             Ausgaenge auf 0
-F07 ; FE             RET
+FE0 ; FA             DOT    L6
+FE1 ; FB             DOT    GL            Reihe 8: Ziel
+FE2 ; FC             DOT    GR
+10D ; FD             MOVI   #0,Q
+FED ; FE             DOT    Q             Ausgaenge auf 0
+F07 ; FF             RET
