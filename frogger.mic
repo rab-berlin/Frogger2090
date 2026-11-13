@@ -1,4 +1,6 @@
 ; frogger - Frogger fuer Busch Microtronic 2090 mit dem ESP2090 Studio (8x8-LED-Matrix) und 4 Tastern
+; Version 06: Die Pruefung 'Auto faehrt auf den Frosch' gilt nur noch vor einem Sprung gegen die
+;   Fahrtrichtung (sonst spraenge er durch das Auto). Mit der Fahrt entkommt er wie nach vorn und zurueck.
 ; Version 05: Auch die Staemme in Reihe 6 bleiben zufaellig in etwa jedem vierten Takt stehen (der Frosch
 ;   kann jederzeit auf den Mittelstreifen zurueck); Pause nach einem verlorenen Frosch etwa 3 s.
 ; Version 04: Der Verkehr stockt zufaellig: Autos und Lastwagen (Reihe 2-4) bleiben je Reihe in etwa jedem
@@ -217,26 +219,26 @@ C50 ; A3             GOTO   chk
 514 ; A4 up:         ADDI   #1,FY
 517 ; A5             ADDI   #1,CNT        Merker
 C50 ; A6             GOTO   chk
-BAD ; A7 left:       CALL   pre           seitlich: erst pruefen, ob ein Auto auf ihn gefahren ist
+BAD ; A7 left:       CALL   prel          gegen die Fahrt (Reihe 2, 4): erst pruefen, ob ein Auto auf ihn gefahren ist
 BC2 ; A8             CALL   movl
 C50 ; A9             GOTO   chk
-BAD ; AA right:      CALL   pre
+BB4 ; AA right:      CALL   prer          gegen die Fahrt (Reihe 3)
 BBB ; AB             CALL   movr
 C50 ; AC             GOTO   chk
-04F ; AD pre:        MOV    FY,X
-71F ; AE             SUBI   #1,X
-92F ; AF             CMPI   #2,X
-DBA ; B0             BRC    pr            nicht auf der Strasse
-0AE ; B1             MOV    L2,V
-71F ; B2             SUBI   #1,X          Reihe 2: Uebertrag, Reihe 3: null
-EB7 ; B3             BRZ    pc
-09E ; B4             MOV    L1,V          (MOV laesst den Uebertrag stehen)
-DB7 ; B5             BRC    pc
-0BE ; B6             MOV    L3,V
-25E ; B7 pc:         AND    FM,V
-EBA ; B8             BRZ    pr
-C6D ; B9             GOTO   dead
-F07 ; BA pr:         RET
+09E ; AD prel:       MOV    L1,V          links: Reihe 2 und 4 fahren nach rechts
+914 ; AE             CMPI   #1,FY
+EB8 ; AF             BRZ    pc
+0BE ; B0             MOV    L3,V
+934 ; B1             CMPI   #3,FY
+EB8 ; B2             BRZ    pc
+F07 ; B3             RET
+0AE ; B4 prer:       MOV    L2,V          rechts: Reihe 3 faehrt nach links
+924 ; B5             CMPI   #2,FY
+EB8 ; B6             BRZ    pc
+F07 ; B7 pr:         RET
+25E ; B8 pc:         AND    FM,V
+EB7 ; B9             BRZ    pr
+C6D ; BA             GOTO   dead
 973 ; BB movr:       CMPI   #7,FX
 ECB ; BC             BRZ    blk
 513 ; BD             ADDI   #1,FX
