@@ -4,7 +4,6 @@ Frogger für den Busch Microtronic 2090 mit dem [ESP2090 Studio](https://github.
 
 - 256 Programmschritte, alle belegt
 - Dateien: [frogger.mic](frogger.mic), das kommentierte Listing, und das Userscript [frogger_farben.py](frogger_farben.py) für die Farben
-- Getestet im [Emulator2090](https://github.com/rab-berlin/Emulator2090), noch nicht am Gerät
 
 ![Ein Spiel im Emulator2090](bilder/spiel.gif)
 
